@@ -1,0 +1,16 @@
+{
+  "name": "laraconman",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "mix",
+    "build": "mix --production",
+    "watch": "mix watch -- --watch-options-stdin && php /Users/chasemiller/PhpstormProjects/crumbls/artisan laraconman:install --force"
+  },
+  "devDependencies": {
+    "laravel-mix": "^6.0.0"
+  },
+  "dependencies": {
+    "pathfinding": "^0.4.18"
+  }
+}
