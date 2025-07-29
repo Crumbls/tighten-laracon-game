@@ -9,6 +9,7 @@ import entityArt from './entity-art.js';
 import EventEmitter from 'events';
 import CollectibleEntity from './collectible-entity.js';
 import CollectibleSpawner from './collectible-spawner.js';
+import AudioHandler from './audio-handler.js';
 
 // Main game coordination using modular architecture
 class Game {
@@ -17,7 +18,7 @@ class Game {
         this.canvas = null;
         this.mapRenderer = null;
         this.inputHandler = null;
-        this.gameState = 'welcome'; // welcome, stopped, playing, paused
+        this.gameState = 'welcome'; // gameover, welcome, stopped, playing, paused
         this.currentMap = null;
         this.player = null;
 
@@ -35,32 +36,24 @@ class Game {
         this.fx = settings.fx;
         this.extras = settings.extras;
         this.maxGhosts = (settings && settings.maxGhosts) || 3;
+        
+        // Death message tracking
+        this.lastKillerGhost = null;
+        this.deathMessageTimer = 0;
+        this.deathMessageDuration = 180; // 3 seconds at 60fps
 
         // Input handler: dump all input to console
         this.inputHandler = new InputHandler();
 
-        this.inputHandler.setCallbacks({
-            onDirectionChange: dir => console.log('Direction:', dir),
-            onKeyPress: function(code, event) {
-                // Intercept Enter/Return for all platforms
-                code = code.toLowerCase();
-                if (
-                    (code === 'enter' || code === 'numpadenter' || code === 'return') &&
-                    this.gameState === 'welcome'
-                ) {
+        // Initialize audio handler with path from view
+        const audioPath = window.laraconmanAudioPath || '/assets/audio/';
+        console.log(audioPath);
+        this.audioHandler = new AudioHandler(audioPath);
+        
+        // Make audio handler available globally for debugging
+        window.gameAudioHandler = this.audioHandler;
 
-                    // Start the game
-                    this.gameState = 'playing';
-                    // Optionally: re-init player, collectibles, etc.
-                    console.log('start that audio.');
-                    return;
-                }
-                console.log(code);
-                console.log(this.gameState);
-            }.bind(this),
-            onPause: () => console.log('Pause requested'),
-            onReset: () => console.log('Reset requested')
-        });
+        this.resetInputHandlerCallbacks();
 
         // Initialize when DOM is ready
         if (document.readyState === 'loading') {
@@ -143,127 +136,18 @@ class Game {
             console.error('Game canvas not found');
             return;
         }
-
         this.gameState = 'welcome';
 
-        // --- Maze rendering integration ---
-        const csv = window.laraconmanMazeCsv;
+        this.audioHandler.playGameStart();
 
-        if (csv) {
-            // Parse CSV and load into MapRenderer
-            const mapArray = Game.parseAndAdaptMazeCsv(csv);
-            const width = mapArray[0]?.length || 0;
-            const height = mapArray.length;
-            this.mapRenderer = new MapRenderer(this.canvas);
-            // MapRenderer expects CSV string, so rejoin for compatibility
-            const normalizedCsv = mapArray.map(row => row.join(',')).join('\n');
-            this.mapRenderer.loadMap(normalizedCsv, width, height);
-            this.mapRenderer.render();
-            this.initPlayer(this.mapRenderer.mapData, this.mapRenderer.tileSize);
-            this.initCollectibles();
-            this.initEventListeners();
-            this.gameLoop();
-        }
+        // --- Maze rendering integration ---
+        this.level = 1;
+        this.score = settings.score;
+        this.startRandomMap();
+        this.initEventListeners();
+        this.gameLoop();
 
         console.log('Game initialized');
-    }
-
-    initCollectibles() {
-        // Use the map and tile types from mapRenderer
-        const mapData = this.mapRenderer.mapData;
-        const tileTypes = this.mapRenderer.TILES;
-        const spawner = new CollectibleSpawner(mapData, tileTypes);
-        const { superdots, dots, fruit } = spawner.spawnCollectibles();
-        this.dots = dots;
-        this.fruit = fruit;
-        this.superdots = superdots;
-    }
-    initEventListeners() {
-      this.collisionEmitter.on('collision-consumable', ({ player, consumed }) => {
-          if (!consumed || !consumed.type) {
-              return;
-          }
-          this.setScore(this.getScore() + consumed.options.points);
-            // Remove dot from this.dots if it is a dot
-            if (consumed.type === this.mapRenderer.TILES.DOT) {
-                this.dots = this.dots.filter(dot => !(dot.col === consumed.col && dot.row === consumed.row));
-                return;
-            } else if (consumed.type === this.mapRenderer.TILES.SUPER_DOT) {
-                this.superdots = this.superdots.filter(dot => !(dot.col === consumed.col && dot.row === consumed.row));
-
-                if (this.mapRenderer && this.mapRenderer.mapData) {
-                    this.mapRenderer.mapData[consumed.row][consumed.col] = this.mapRenderer.TILES.EMPTY;
-                }
-
-                if (player && typeof player.setSuperState === 'function') {
-                    player.setSuperState(true);
-                    setTimeout(() => {
-                        player.setSuperState(false);
-                    }, (settings.megaPelletDuration || 5) * 1000);
-                    console.log('user is a super dot!');
-                } else {
-                    console.log('fn or player no exist.');
-                }
-
-            } else if (consumed.type === this.mapRenderer.TILES.FRUIT) {
-console.log('its a fruit!');
-                this.fruit = this.fruit.filter(fruit => !(fruit.col === consumed.col && fruit.row === consumed.row));
-            }
-      });
-        // Add default event handlers for collisions
-        this.collisionEmitter.on('collision-ghost', ({player, ghost}) => {
-            console.log('Player collided with ghost:', ghost.displayName || ghost.color);
-        });
-
-        // Debounced player-eaten event handler
-        this.collisionEmitter.on('player-eaten', throttleLeading(({ player, ghost }) => {
-            // Animate player death, decrement lives, respawn player
-            this.lives -=1;
-            if (player && typeof player.die === 'function') {
-                player.die();
-            }
-            this.gameState = 'stopped';
-            this.updateUI && this.updateUI();
-            if (this.lives > 0) {
-                if (typeof this.initPlayer === 'function') {
-                    this.initPlayer(this.mapRenderer.mapData, this.mapRenderer.tileSize);
-                    this.inputHandler.setCallbacks({
-                        onDirectionChange: dir => this.player.setDirection(dir)
-                    });
-                }
-                this.gameState = 'playing';
-
-            } else {
-                this.gameState = 'stopped';
-                this.updateUI && this.updateUI();
-            }
-            console.log(this.gameState);
-        }, 1500));
-
-        this.collisionEmitter.on('ghost-eaten', ({ player, ghost, points }) => {
-            // Example: Animate ghost death, award points
-            if (ghost && typeof ghost.die === 'function') {
-                ghost.die(); // You may want to implement this
-            }
-            // Banish ghost to pen (set to first GHOST_SPAWN tile found)
-            const map = this.mapRenderer.mapData;
-            let found = false;
-            for (let r = 0; r < map.length && !found; r++) {
-                for (let c = 0; c < map[0].length && !found; c++) {
-                    if (map[r][c] === this.mapRenderer.TILES.GHOST_SPAWN) {
-                        ghost.col = c;
-                        ghost.row = r;
-                        ghost.x = c * this.mapRenderer.tileSize;
-                        ghost.y = r * this.mapRenderer.tileSize;
-                        ghost.state = 'in_pen';
-                        found = true;
-                        break;
-                    }
-                }
-            }
-            this.score += points;
-            this.updateUI && this.updateUI();
-        });
     }
 
     /**
@@ -394,12 +278,62 @@ console.log('its a fruit!');
             this.updateUI();
             console.log('Game started');
 
-            // TODO: Initialize player and ghosts
+            // Initialize entities if we have a map
+            if (this.mapRenderer && this.mapRenderer.mapData) {
+                this.initPlayer(this.mapRenderer.mapData, this.mapRenderer.tileSize);
+                this.initCollectibles();
+            }
         } else if (this.gameState === 'paused') {
             this.gameState = 'playing';
             this.updateUI();
             console.log('Game resumed');
         }
+    }
+
+    resetInputHandlerCallbacks() {
+        let $this = this;
+        this.inputHandler.setCallbacks({
+            onDirectionChange: dir => console.log('Direction:', dir),
+                onDirectionChange: dir => {
+                    if (this.player) {
+                        $this.player.setDirection(dir);
+                    }
+                    },
+            onEnter: function() {
+                if ($this.gameState === 'welcome') {
+console.log('line 1');
+                    /**
+                     * stop welcome audio. start munching audio.
+                     */
+                    $this.audioHandler.stop('beginning'); // Stop the initial game start music
+                    $this.gameState = 'playing';
+                    return;
+                } else if ($this.gameState === 'gameover') {
+                    console.log('line 2');
+                    $this.restartGame();
+                } else {
+                    console.log('line 3');
+
+                    console.log($this.gameState);
+                    $this.audioHandler.stopAll();
+                }
+            },
+            onPause:function() {
+                if ($this.gameState == 'paused') {
+                    $this.gameState = 'playing';
+                } else if ($this.gameState == 'playing') {
+                    $this.gameState = 'paused';
+                    $this.audioHandler.stopAll();
+                }
+            },
+            onReset: function() {
+                if ($this.gameState === 'gameover') {
+                    $this.restartGame();
+                } else {
+                    console.log('Reset requested');
+                }
+            }
+        });
     }
 
     /**
@@ -437,6 +371,39 @@ console.log('its a fruit!');
     }
 
     /**
+     * Restart game from game over screen
+     */
+    restartGame() {
+        // Reset game values
+        this.score = 0;
+        this.lives = settings.lives;
+
+        
+        // Clear ghosts
+        this.ghosts = [];
+        this.activeGhosts = [];
+        this.ghostPenTimers.clear();
+        this.ghostExitTimers.clear();
+        this.collisionCooldowns.clear();
+        this.portalCooldowns.clear();
+        this.ghostReleaseTimer = 0;
+        
+        // Reinitialize game components
+        this.initPlayer(this.mapRenderer.mapData, this.mapRenderer.tileSize);
+        this.initCollectibles();
+
+
+        console.log(this.gameState);
+        this.gameState = 'welcome';
+        // Update UI
+        this.updateUI();
+
+        console.log(this.gameState);
+        
+        console.log('Game restarted');
+    }
+
+    /**
      * Handle direction changes from input
      * @param {string} direction - New movement direction
      */
@@ -451,16 +418,24 @@ console.log('its a fruit!');
      * Update UI elements
      */
     updateUI() {
-        // Update score
+        // Update score and lives - show "-" when game is over or in welcome state
         const scoreElement = document.getElementById('score');
-        if (scoreElement) {
-            scoreElement.textContent = this.score;
-        }
-
-        // Update lives
         const livesElement = document.getElementById('lives');
-        if (livesElement) {
-            livesElement.textContent = this.lives;
+        
+        if (this.gameState === 'gameover' || this.gameState === 'welcome') {
+            if (scoreElement) {
+                scoreElement.textContent = '-';
+            }
+            if (livesElement) {
+                livesElement.textContent = '-';
+            }
+        } else {
+            if (scoreElement) {
+                scoreElement.textContent = this.score;
+            }
+            if (livesElement) {
+                livesElement.textContent = this.lives;
+            }
         }
 
         // Update button states
@@ -516,10 +491,9 @@ console.log('its a fruit!');
             let penCols = penTiles.map(t => t.col);
             let penRows = penTiles.map(t => t.row);
             let minCol = Math.min(...penCols), maxCol = Math.max(...penCols);
-            let maxRow = Math.max(...penRows); // <--- added this line
             let centerCol = Math.round((minCol + maxCol) / 2);
             // Search downward from just below pen, only at centerCol
-            for (let r = maxRow + 1; r < mapData.length-1; r++) {
+            for (let r = Math.max(...penRows) + 1; r < mapData.length-1; r++) {
                 if (mapData[r][centerCol] === this.mapRenderer.TILES.EMPTY) {
                     playerStart = {col: centerCol, row: r};
                     break;
@@ -538,13 +512,7 @@ console.log('its a fruit!');
         }
         const speed = 2;
         this.player = new PlayerEntity(playerStart.col, playerStart.row, tileSize, mapData, settings);
-        if (this.inputHandler && typeof this.inputHandler.setCallbacks === 'function') {
-            this.inputHandler.setCallbacks({
-                onDirectionChange: dir => {
-                    if (this.player) this.player.setDirection(dir);
-                }
-            });
-        }
+        this.resetInputHandlerCallbacks();
     }
 
     /**
@@ -552,6 +520,10 @@ console.log('its a fruit!');
      * Check for item collision and emit event
      */
     checkCollisions(entity) {
+        if (!entity.hasMovedFromSpawn) {
+            return;
+        }
+
         // Ghost collision
         for (const ghost of this.ghosts) {
             if (ghost.col === entity.col && ghost.row === entity.row) {
@@ -579,7 +551,7 @@ console.log('its a fruit!');
         }
         // Fruit collision
         for (const fruit of this.fruit || []) {
-            if (fruit.col === entity.col && fruit.row === entity.row) {
+            if (fruit.col === entity.col && fruit.row === entity.row && !fruit.eaten && !fruit.animating) {
                 fruit.type = this.mapRenderer.TILES.FRUIT;
                 this.collisionEmitter.emit('collision-consumable', {
                     player: entity,
@@ -688,6 +660,7 @@ console.log('its a fruit!');
      */
     spawnGhost() {
         if (this.ghosts.length >= this.maxGhosts) return;
+        if (this.gameState !== 'playing') return; // Don't spawn when paused or stopped
 
         // Find all ghost spawn tiles inside the pen (classic: 2 rows x 4 cols above door)
         const spawns = [];
@@ -726,8 +699,8 @@ console.log('its a fruit!');
      * Move ghosts with pathfinding to a random destination outside the pen
      */
     moveGhosts() {
-        if (this.gameState == 'stopped') {
-            return;
+        if (this.gameState !== 'playing') {
+            return; // Don't move ghosts when stopped or paused
         }
         const data = this.mapRenderer.mapData;
         const penTiles = [];
@@ -805,13 +778,13 @@ console.log('its a fruit!');
     }
 
     /**
-     * Game loop
+     * Game loop only
      */
-    gameLoop() {
+    oldGameLoop() {
         this.mapRenderer.render();
         this.renderCollectibles(this.mapRenderer.ctx);
         if (this.player) {
-            this.player.render(this.mapRenderer.ctx);
+            this.player.render(this.mapRenderer.ctx, entityArt);
 
             if (this.gameState == 'playing') {
                 this.player.move();
@@ -821,11 +794,15 @@ console.log('its a fruit!');
         if (this.gameState === 'welcome') {
             this.drawWelcomeScreen();
         } else if (this.gameState === 'gameover') {
-            alert('f');
+            this.drawGameOverScreen();
         } else if (this.gameState == 'highscore') {
-            alert('butts');
+            alert('even more bad words');
+        } else if (this.gameState === 'paused') {
+            // When paused, still render ghosts but don't move or spawn them
+            for (const ghost of this.ghosts) ghost.render(this.mapRenderer.ctx);
+            this.drawOverlay('PAUSED', 'Press P to Resume');
         } else {
-
+            // Only move and spawn ghosts when playing
             this.moveGhosts();
             for (const ghost of this.ghosts) ghost.render(this.mapRenderer.ctx);
 
@@ -847,6 +824,30 @@ console.log('its a fruit!');
         this.drawOverlay('WakaWaka', 'Press Enter to Start');
     }
 
+    drawPauseScreen() {
+        this.drawOverlay('PAUSED', 'Press P to Resume');
+    }
+
+    drawGameOverScreen() {
+        const ctx = this.mapRenderer.ctx;
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = '#ff0000';
+        ctx.font = 'bold 48px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('GAME OVER', ctx.canvas.width / 2, ctx.canvas.height / 2 - 60);
+        
+        ctx.fillStyle = 'white';
+        ctx.font = '24px Arial';
+        ctx.fillText(`Final Score: ${this.score}`, ctx.canvas.width / 2, ctx.canvas.height / 2 - 10);
+        ctx.font = '20px Arial';
+        ctx.fillText('Press R to Restart', ctx.canvas.width / 2, ctx.canvas.height / 2 + 30);
+        ctx.restore();
+    }
+
     drawOverlay(title, subtitle) {
         const ctx = this.mapRenderer.ctx;
         ctx.save();
@@ -863,11 +864,53 @@ console.log('its a fruit!');
         ctx.restore();
     }
 
-    renderCollectibles(ctx) {
-        if (this.dots) this.dots.forEach(dot => dot.render(ctx, this.mapRenderer.tileSize));
-        if (this.fruit) this.fruit.forEach(fruit => fruit.render(ctx, this.mapRenderer.tileSize, this.mapRenderer.entityArt));
+    drawDeathMessage() {
+        if (this.deathMessageTimer <= 0 || !this.lastKillerGhost) return;
+        
+        const ctx = this.mapRenderer.ctx;
+        ctx.save();
+        
+        // Semi-transparent background
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        
+        // Death message
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = '#ff0000';
+        ctx.font = 'bold 36px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('ELIMINATED BY', ctx.canvas.width / 2, ctx.canvas.height / 2 - 30);
+        
+        ctx.fillStyle = '#ffff00';
+        ctx.font = 'bold 28px Arial';
+        ctx.fillText(this.lastKillerGhost, ctx.canvas.width / 2, ctx.canvas.height / 2 + 10);
+        
+        // Fade effect based on remaining time
+        const fadeRatio = this.deathMessageTimer / this.deathMessageDuration;
+        ctx.globalAlpha = fadeRatio;
+        
+        ctx.restore();
     }
 
+    renderCollectibles(ctx) {
+        if (this.fruit) this.fruit.forEach((fruit) => {
+            // Find the correct art based on the fruit's name
+            const artForFruit = entityArt.fruit.find(art => art.name === fruit.options.name);
+            fruit.render(ctx, this.mapRenderer.tileSize, artForFruit);
+        });
+        if (this.dots) this.dots.forEach(dot => dot.render(ctx, this.mapRenderer.tileSize));
+    }
+
+    updateCollectibleAnimations() {
+        if (this.fruit) {
+            // Update fruit animations and remove completed ones
+            this.fruit = this.fruit.filter(fruit => {
+                fruit.updateAnimation();
+                return fruit.active; // Keep only active fruits
+            });
+        }
+    }
     /**
      * Get everything at a specific coordinate
      */
@@ -1078,27 +1121,36 @@ console.log('its a fruit!');
     }
 
     /**
-     * Game loop
+     * Game loop 2 wtf
      */
     gameLoop() {
         this.mapRenderer.render();
+        
+        // Update collectible animations
+        this.updateCollectibleAnimations();
+        
         this.renderCollectibles(this.mapRenderer.ctx);
         if (this.player) {
-            this.player.render(this.mapRenderer.ctx);
+            this.player.render(this.mapRenderer.ctx, entityArt);
 
-            if (this.gameState == 'playing') {
+            if (this.gameState == 'playing' && this.deathMessageTimer <= 0) {
                 this.player.move();
                 this.checkCollisions(this.player);
             }
         }
+
         if (this.gameState === 'welcome') {
             this.drawWelcomeScreen();
+        } else if (this.gameState === 'paused') {
+            // When paused, still render ghosts but don't move or spawn them
+            for (const ghost of this.ghosts) ghost.render(this.mapRenderer.ctx);
+            this.drawPauseScreen();
         } else if (this.gameState === 'gameover') {
-            alert('f');
+            this.drawGameOverScreen();
         } else if (this.gameState == 'highscore') {
-            alert('butts');
         } else {
 
+            // Only move and spawn ghosts when playing
             this.moveGhosts();
             for (const ghost of this.ghosts) ghost.render(this.mapRenderer.ctx);
 
@@ -1113,7 +1165,192 @@ console.log('its a fruit!');
             this.updateCollisionCooldowns();
         }
         
+        // Handle death message display and timer
+        if (this.deathMessageTimer > 0) {
+            this.drawDeathMessage();
+            this.deathMessageTimer--;
+        }
+        
         requestAnimationFrame(() => this.gameLoop());
+    }
+
+    pickRandomMap() {
+        if (window.laraconmanMazeCsvs) {
+            const mapKeys = Object.keys(window.laraconmanMazeCsvs);
+            console.log('Available maps:', mapKeys.length);
+            let playedMaps = [];
+            let idx;
+            do {
+                idx = Math.floor(Math.random() * mapKeys.length);
+            } while (playedMaps.includes(idx) && playedMaps.length < mapKeys.length);
+            playedMaps.push(idx);
+            const selectedKey = mapKeys[idx];
+            return window.laraconmanMazeCsvs[selectedKey];
+        }
+        return null;
+    }
+
+    startRandomMap() {
+        const csv = this.pickRandomMap();
+        if (!csv) return;
+        const mapArray = Game.parseAndAdaptMazeCsv(csv);
+        const width = mapArray[0]?.length || 0;
+        const height = mapArray.length;
+        this.mapRenderer = new MapRenderer(this.canvas);
+        const normalizedCsv = mapArray.map(row => row.join(',')).join('\n');
+        this.mapRenderer.loadMap(normalizedCsv, width, height);
+        this.mapRenderer.render();
+        this.initPlayer(this.mapRenderer.mapData, this.mapRenderer.tileSize);
+        this.initCollectibles();
+        this.level = (this.level || 1);
+        this.updateUI();
+    }
+
+    checkLevelComplete() {
+        // No more dots, superdots, or fruit
+        if ((this.dots && this.dots.length === 0) && (this.superdots && this.superdots.length === 0) && (this.fruit && this.fruit.length === 0)) {
+            this.level = (this.level || 1) + 1;
+            this.updateUI();
+            this.startRandomMap();
+        }
+    }
+
+    initCollectibles() {
+        // Use the map and tile types from mapRenderer
+        const mapData = this.mapRenderer.mapData;
+        const tileTypes = this.mapRenderer.TILES;
+        const spawner = new CollectibleSpawner(mapData, tileTypes);
+        const { superdots, dots, fruit } = spawner.spawnCollectibles();
+        this.dots = dots;
+        console.log('Fruit spawned:', fruit.length);
+        console.log(fruit);
+        // Fruit now comes directly from entityArt, so no need to override
+        this.fruit = fruit;
+        this.superdots = superdots;
+        console.log('Final fruit array length:', this.fruit.length);
+        if (this.fruit.length > 0) {
+            console.log('First fruit:', this.fruit[0]);
+        }
+        this.checkLevelComplete();
+    }
+
+    initEventListeners() {
+      this.collisionEmitter.on('collision-consumable', ({ player, consumed }) => {
+          if (!consumed || !consumed.type) {
+              return;
+          }
+          if (!consumed.options.points) {
+              if (consumed.type === this.mapRenderer.TILES.FRUIT) {
+                  // Pac-Man fruit score progression: 100, 300, 500, 700, 1000, 2000, 3000, 5000
+                  if (!this.fruitScoreIndex) this.fruitScoreIndex = 0;
+                  const fruitScores = [100, 300, 500, 700, 1000, 2000, 3000, 5000];
+                  consumed.options.points = fruitScores[Math.min(this.fruitScoreIndex, fruitScores.length - 1)];
+                  this.fruitScoreIndex++;
+                  console.log(`Fruit score set to ${consumed.options.points}`);
+              }
+          }
+          this.setScore(this.getScore() + consumed.options.points);
+            // Remove dot from this.dots if it is a dot
+            if (consumed.type === this.mapRenderer.TILES.DOT) {
+                this.dots = this.dots.filter(dot => !(dot.col === consumed.col && dot.row === consumed.row));
+                this.audioHandler.playChomp();
+                return;
+            } else if (consumed.type === this.mapRenderer.TILES.SUPER_DOT) {
+                this.superdots = this.superdots.filter(dot => !(dot.col === consumed.col && dot.row === consumed.row));
+
+                if (this.mapRenderer && this.mapRenderer.mapData) {
+                    this.mapRenderer.mapData[consumed.row][consumed.col] = this.mapRenderer.TILES.EMPTY;
+                }
+
+                if (player && typeof player.setSuperState === 'function') {
+                    player.setSuperState(true);
+                    setTimeout(() => {
+                        player.setSuperState(false);
+                    }, (settings.megaPelletDuration || 5) * 1000);
+                    console.log('user is a super dot!');
+                } else {
+                    console.log('fn or player no exist.');
+                }
+
+            } else if (consumed.type === this.mapRenderer.TILES.FRUIT) {
+              const fruit = this.fruit.find(f => f.col === consumed.col && f.row === consumed.row);
+              if (fruit) {
+                  this.setScore(this.getScore() + fruit.options.points); // Ensure score increments on fruit eaten
+                  fruit.startExplodingAnimation();
+                  // Remove after explosion animation (0.5s)
+                  setTimeout(() => {
+                      fruit.eaten = true;
+                      this.fruit = this.fruit.filter(f => f !== fruit);
+                  }, 500);
+                  this.audioHandler.playFruitEaten();
+              }
+          }
+          this.checkLevelComplete();
+      });
+        // Add default event handlers for collisions
+        this.collisionEmitter.on('collision-ghost', ({player, ghost}) => {
+            console.log('Player collided with ghost:', ghost.displayName || ghost.color);
+        });
+
+        // Debounced player-eaten event handler
+        this.collisionEmitter.on('player-eaten', throttleLeading(({ player, ghost }) => {
+            // Store killer ghost info and start death message timer
+            this.lastKillerGhost = ghost.displayName || ghost.name || 'Unknown Ghost';
+            this.deathMessageTimer = this.deathMessageDuration;
+            
+            // Animate player death, decrement lives, respawn player
+            this.lives -=1;
+            if (player && typeof player.die === 'function') {
+                player.die();
+            }
+            this.audioHandler.playPlayerDeath();
+            this.gameState = 'stopped';
+            this.updateUI && this.updateUI();
+            if (this.lives > 0) {
+                if (typeof this.initPlayer === 'function') {
+                    this.initPlayer(this.mapRenderer.mapData, this.mapRenderer.tileSize);
+
+                    this.resetInputHandlerCallbacks()
+                    /*
+                    this.inputHandler.setCallbacks({
+                        onDirectionChange: dir => this.player.setDirection(dir)
+                    });
+                     */
+                }
+                this.gameState = 'playing';
+
+            } else {
+                this.gameState = 'gameover';
+                this.updateUI && this.updateUI();
+            }
+            console.log(this.gameState);
+        }, 1500));
+
+        this.collisionEmitter.on('ghost-eaten', ({ player, ghost, points }) => {
+            // Example: Animate ghost death, award points
+            if (ghost && typeof ghost.die === 'function') {
+                ghost.die(); // You may want to implement this
+            }
+            this.audioHandler.playGhostEaten();
+            // Banish ghost to pen (set to first GHOST_SPAWN tile found)
+            const map = this.mapRenderer.mapData;
+            let found = false;
+            for (let r = 0; r < map.length; r++) {
+                for (let c = 0; c < map[0].length; c++) {
+                    if (map[r][c] === this.mapRenderer.TILES.GHOST_SPAWN) {
+                        ghost.col = c;
+                        ghost.row = r;
+                        ghost.x = c * this.mapRenderer.tileSize;
+                        ghost.y = r * this.mapRenderer.tileSize;
+                        ghost.state = 'in_pen';
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            this.score += points;
+            this.updateUI && this.updateUI();
+        });
     }
 }
 

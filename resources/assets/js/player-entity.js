@@ -20,6 +20,14 @@ export default class PlayerEntity {
         this.targetY = this.y;
         this.moving = false;
         this.type = 'player'; // added type property
+        this.spawnCol = startCol; // track spawn position
+        this.spawnRow = startRow;
+        this.hasMovedFromSpawn = false; // track if player has moved from spawn
+        
+        // Animation properties for mouth movement
+        this.animationFrame = 0;
+        this.animationSpeed = 8; // Change animation every 8 frames
+        this.showMouthClosed = false;
     }
 
     setDirection(dir) {
@@ -100,12 +108,30 @@ export default class PlayerEntity {
                 this.col += dCol;
                 this.row += dRow;
                 this.moving = false;
+                
+                // Check if player has moved from spawn position
+                if (!this.hasMovedFromSpawn && (this.col !== this.spawnCol || this.row !== this.spawnRow)) {
+                    this.hasMovedFromSpawn = true;
+                }
             } else {
                 // Move toward target
                 let angle = Math.atan2(dy, dx);
                 this.x += this.speed * Math.cos(angle);
                 this.y += this.speed * Math.sin(angle);
             }
+        }
+        
+        // Update animation frame when moving (works in both normal and super state)
+        if (this.moving) {
+            this.animationFrame++;
+            if (this.animationFrame >= this.animationSpeed) {
+                this.showMouthClosed = !this.showMouthClosed;
+                this.animationFrame = 0;
+            }
+        } else {
+            // Reset animation when not moving - show mouth open
+            this.showMouthClosed = false;
+            this.animationFrame = 0;
         }
     }
 
@@ -135,8 +161,8 @@ export default class PlayerEntity {
         return this.col === col && this.row === row;
     }
 
-    // Render Player (simple yellow circle for now)
-    render(ctx) {
+    // Render Player using SVG image
+    render(ctx, entityArt = null) {
         ctx.save();
         let scale = (this.state === 'super') ? 1.2 : 1;
         let centerX = this.x + this.tileSize / 2;
@@ -144,10 +170,43 @@ export default class PlayerEntity {
         ctx.translate(centerX, centerY);
         ctx.scale(scale, scale);
         ctx.translate(-centerX, -centerY);
-        ctx.fillStyle = '#FFFF00';
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, this.tileSize / 2 - 2, 0, 2 * Math.PI);
-        ctx.fill();
+
+        // Use animation state to determine what to show (works in both normal and super state)
+        const shouldShowClosed = this.moving && this.showMouthClosed;
+        
+        if (!shouldShowClosed && entityArt && entityArt.player && entityArt.player.image) {
+            // Show pacman image (mouth open)
+            const img = new window.Image();
+            img.src = entityArt.player.image;
+            
+            const draw = () => {
+                // Check if we need to flip horizontally for left movement
+                const shouldFlip = this.direction === 'left';
+                
+                if (shouldFlip) {
+                    // Save context and flip horizontally
+                    ctx.save();
+                    ctx.translate(this.x + this.tileSize, this.y);
+                    ctx.scale(-1, 1);
+                    ctx.drawImage(img, 0, 0, this.tileSize, this.tileSize);
+                    ctx.restore();
+                } else {
+                    // Normal rendering for right, up, down, or no direction
+                    ctx.drawImage(img, this.x, this.y, this.tileSize, this.tileSize);
+                }
+            };
+            
+            img.onload = draw;
+            if (img.complete) draw();
+        } else {
+            // Show yellow circle (mouth closed or fallback)
+            // The circle will automatically scale with the context transformation
+            ctx.fillStyle = '#FFFF00';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, this.tileSize / 2 - 2, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+        
         ctx.restore();
     }
 }

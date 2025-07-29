@@ -32,7 +32,7 @@ class MapRenderer {
             background: '#000000',
             path: '#000080',
             corner: '#FF0000',
-            ghostSpawn: '#00FF00',
+            ghostSpawn: '#000080', // Match path/tunnel background
             portal: '#0000FF',
             superDot: '#FFFF00'
         };
@@ -68,12 +68,10 @@ class MapRenderer {
         for (let c = 0; c < width; c++) {
             if (raw[0][c] === this.TILES.PORTAL) portalColsTop.push(c);
             if (raw[height-1][c] === this.TILES.PORTAL) portalColsBottom.push(c);
-            console.log('crap2');
         }
         for (let r = 0; r < height; r++) {
             if (raw[r][0] === this.TILES.PORTAL) portalRowsLeft.push(r);
             if (raw[r][width-1] === this.TILES.PORTAL) portalRowsRight.push(r);
-            console.log('crap1');
         }
         // Build bordered map
         this.mapData = [];

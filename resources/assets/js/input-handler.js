@@ -15,19 +15,19 @@ class InputHandler {
 
         // Key mapping for navigation
         this.keyMap = {
-            'ArrowUp': this.DIRECTIONS.UP,
-            'KeyW': this.DIRECTIONS.UP,
-            'ArrowDown': this.DIRECTIONS.DOWN,
-            'KeyS': this.DIRECTIONS.DOWN,
-            'ArrowLeft': this.DIRECTIONS.LEFT,
-            'KeyA': this.DIRECTIONS.LEFT,
-            'ArrowRight': this.DIRECTIONS.RIGHT,
-            'KeyD': this.DIRECTIONS.RIGHT
+            'arrowup': this.DIRECTIONS.UP,
+            'keyw': this.DIRECTIONS.UP,
+            'arrowdown': this.DIRECTIONS.DOWN,
+            'keys': this.DIRECTIONS.DOWN,
+            'arrowleft': this.DIRECTIONS.LEFT,
+            'keya': this.DIRECTIONS.LEFT,
+            'arrowright': this.DIRECTIONS.RIGHT,
+            'keyd': this.DIRECTIONS.RIGHT
         };
 
         this.callbacks = {
             onDirectionChange: null,
-            onKeyPress: null, // NEW: generic key press
+            onKeyPress: null,
             onPause: null,
             onReset: null
         };
@@ -53,21 +53,23 @@ class InputHandler {
             if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
                 e.preventDefault();
             }
+
+            let code = e.code.toLowerCase();
             // Navigation keys
-            if (this.keyMap[e.code]) {
-                this.handleDirectionInput(e.code);
+            if (this.keyMap[code]) {
+                this.handleDirectionInput(code);
             }
             // Pause (Escape)
-            else if (e.code === 'Escape' && this.callbacks.onPause) {
+            else if (code === 'keyp' && this.callbacks.onPause) {
+
                 this.callbacks.onPause();
             }
-            // Reset (R)
-            else if ((e.code === 'KeyR' || e.code === 'F5') && this.callbacks.onReset) {
+            else if ((code === 'keyr' || code === 'f5') && this.callbacks.onReset) {
                 this.callbacks.onReset();
             }
             // Enter/Return
-            else if ((e.code === 'Enter' || e.code === 'NumpadEnter') && this.callbacks.onKeyPress) {
-                this.callbacks.onKeyPress('enter', e);
+            else if ((code === 'enter' || code === 'numpadenter' || code === 'return') && this.callbacks.onEnter) {
+                this.callbacks.onEnter();
             }
             // Any other key
             else if (this.callbacks.onKeyPress) {
@@ -77,6 +79,7 @@ class InputHandler {
     }
 
     handleDirectionInput(code) {
+        console.log(code);
         const direction = this.keyMap[code];
         if (direction && direction !== this.currentDirection) {
             this.queuedDirection = direction;

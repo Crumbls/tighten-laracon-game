@@ -4,12 +4,12 @@
 export default {
     player: {
         name: 'Player',
-        image: '/vendor/laraconman/images/player.svg',
+        image: '/vendor/laraconman/images/pacman.png',
         size: 32
     },
     ghosts: [
         { name: 'NullPointer',    image: '/vendor/laraconman/images/ghost-blinky.svg', size: 32 },
-        { name: 'PushProduction',       image: '/vendor/laraconman/images/ghost-pinky.svg',  size: 32 },
+        { name: 'PushProduction', image: '/vendor/laraconman/images/ghost-pinky.svg',  size: 32 },
         { name: 'Glitchy',        image: '/vendor/laraconman/images/ghost-inky.svg',   size: 32 },
         { name: 'Regexorcist',    image: '/vendor/laraconman/images/ghost-clyde.svg',  size: 32 },
         { name: 'RaceCondition',  image: '/vendor/laraconman/images/ghost-blinky.svg', size: 32 },
@@ -27,7 +27,7 @@ export default {
         { name: 'Star',    image: '/vendor/laraconman/images/power-pellet-star.svg',    size: 16 }
     ],
     fruit: [
-        { name: 'Cherry',  image: '/vendor/laraconman/images/fruit-cherry.svg',  size: 20 },
-        { name: 'Strawberry', image: '/vendor/laraconman/images/fruit-strawberry.svg', size: 20 }
+        { name: 'Nova',  image: '/vendor/laraconman/images/nova.svg', eatenImage: '/vendor/laraconman/images/nova-explosion.svg', size: 20 },
+        { name: 'Filament',  image: '/vendor/laraconman/images/filament.png', eatenImage: '/vendor/laraconman/images/filament.png', size: 20 },
     ]
 };

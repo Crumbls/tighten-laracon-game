@@ -13,9 +13,9 @@ class GameController extends Controller
      */
     public function __invoke(): View
     {
-        $map = Map::inRandomOrder()->first();
+        $maps = Map::inRandomOrder()->get();
         return view('laraconman::game', [
-            'map' => $map,
+            'records' => $maps,
         ]);
     }
 }

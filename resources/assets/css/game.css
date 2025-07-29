@@ -361,53 +361,6 @@ input {border:0px; outline:0px;}
     z-index:3;
 }
 
-.sprite image {
-    width:30px;
-    height:30px;
-}
-
-.notice{
-    position:absolute;
-    top:325px;
-    left:180px;
-    width:285px;
-    padding-bottom:20px;
-    padding-top:-10px;
-    /*height:120px ;*/
-    z-index:8;
-    visibility:hidden;
-    text-align:center;
-    background-color:#000;
-    border:2px #0033ff solid;
-    border-radius:10px;
-    opacity:0.95;
-}
-
-.notice_top {
-    font-size:14px;
-    color:yellow;
-    font-weight:bold;
-    display:inline-block;
-    position:relative;
-    top:-8px;
-}
-
-.notice_bottom {
-    font-size:15px;
-    color:lime !important;
-    display:block;
-    margin-top:40px;
-    font-weight:bold;
-    display:inline-block;
-    position:relative;
-    top:-8px;
-}
-
-#score {
-    position:absolute; top:495px; left:10px; width:600px; height:20px;
-}
-#score input {border:0; outline:0; width:70px;}
-.scores {font-size:12px; color:green; background-color:#000000; border:0}
 
 .multiColour {
     background-image: -webkit-gradient( linear, left top, right top, color-stop(0, #f22), color-stop(0.15, #f2f), color-stop(0.3, #22f), color-stop(0.45, #2ff), color-stop(0.6, #2f2),color-stop(0.75, #2f2), color-stop(0.9, #ff2), color-stop(1, #f22) );

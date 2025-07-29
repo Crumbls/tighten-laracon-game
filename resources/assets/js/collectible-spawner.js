@@ -1,6 +1,7 @@
 // CollectibleSpawner: generates dots and fruit on valid tiles
 import CollectibleEntity from './collectible-entity.js';
 import settings from './settings.js';
+import entityArt from './entity-art.js';
 
 export default class CollectibleSpawner {
     constructor(mapData, tileTypes, options = {}) {
@@ -15,6 +16,7 @@ export default class CollectibleSpawner {
         const fruit = [];
         const superdots = [];
         const occupied = new Set(existingEntities.map(e => `${e.col},${e.row}`));
+        
         // SUPERDOTS: Place superdots at positions defined by the map (tileTypes.SUPER_DOT)
         for (let row = 0; row < this.mapData.length; row++) {
             for (let col = 0; col < this.mapData[0].length; col++) {
@@ -29,20 +31,8 @@ export default class CollectibleSpawner {
                 }
             }
         }
-        // Dots
-        for (let row = 0; row < this.mapData.length; row++) {
-            for (let col = 0; col < this.mapData[0].length; col++) {
-                if (
-                    this.mapData[row][col] === this.tileTypes.EMPTY &&
-                    !occupied.has(`${col},${row}`) &&
-                    !this._isInPen(col, row) &&
-                    !this._isInPortalOrTunnel(col, row)
-                ) {
-                    dots.push(new CollectibleEntity(col, row, 'dot', { points: settings.dotPoints }));
-                }
-            }
-        }
-        // Fruits: Only spawn at least 5 tiles away from any superdot
+
+        // FRUIT: Determine fruit locations FIRST before placing dots
         const fruitMinDistance = 5;
         const fruitCandidates = [];
         for (let row = 0; row < this.mapData.length; row++) {
@@ -68,23 +58,59 @@ export default class CollectibleSpawner {
                 }
             }
         }
-        // Pick a random fruit type
-        const fruitType = settings.fruitTypes[Math.floor(Math.random() * settings.fruitTypes.length)];
-        // Optionally, allow caller to pass fruit locations
+        
+        // Spawn 2 fruit automatically
         let fruitLocations = this.options.fruitLocations || [];
         if (fruitLocations.length === 0) {
-            if (fruitCandidates.length > 0) {
-                fruitLocations = [fruitCandidates[Math.floor(Math.random() * fruitCandidates.length)]];
+            // Pick 2 random locations if we have enough candidates
+            const numFruit = Math.min(2, fruitCandidates.length);
+            const selectedLocations = [];
+            const usedIndices = new Set();
+            
+            for (let i = 0; i < numFruit; i++) {
+                let idx;
+                do {
+                    idx = Math.floor(Math.random() * fruitCandidates.length);
+                } while (usedIndices.has(idx));
+                
+                usedIndices.add(idx);
+                selectedLocations.push(fruitCandidates[idx]);
             }
+            fruitLocations = selectedLocations;
         }
-        for (const loc of fruitLocations) {
+        
+        // Create fruit entities and mark their positions as occupied
+        for (let i = 0; i < fruitLocations.length; i++) {
+            const loc = fruitLocations[i];
             if (loc) {
+                // Pick a random fruit type for each fruit
+                const fruitType = entityArt.fruit[Math.floor(Math.random() * entityArt.fruit.length)];
                 fruit.push(new CollectibleEntity(loc.col, loc.row, 'fruit', {
                     ...fruitType
                 }));
                 occupied.add(`${loc.col},${loc.row}`);
+                console.log(`Fruit placed at ${loc.col},${loc.row} - marked as occupied`);
             }
         }
+
+        // DOTS: Place dots AFTER fruit locations are determined and occupied
+        console.log('Occupied positions before placing dots:', Array.from(occupied));
+        for (let row = 0; row < this.mapData.length; row++) {
+            for (let col = 0; col < this.mapData[0].length; col++) {
+                const posKey = `${col},${row}`;
+                if (
+                    this.mapData[row][col] === this.tileTypes.EMPTY &&
+                    !occupied.has(posKey) &&
+                    !this._isInPen(col, row) &&
+                    !this._isInPortalOrTunnel(col, row)
+                ) {
+                    dots.push(new CollectibleEntity(col, row, 'dot', { points: settings.dotPoints }));
+                } else if (this.mapData[row][col] === this.tileTypes.EMPTY && occupied.has(posKey)) {
+                    console.log(`Skipping dot at ${col},${row} - position is occupied`);
+                }
+            }
+        }
+        
         return { superdots, dots, fruit };
     }
 

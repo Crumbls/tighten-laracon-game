@@ -11,7 +11,7 @@ class InstallCommand extends Command
 {
     protected $signature = 'laraconman:install
                            {--force : Force installation even if already installed}
-                           {--maps=5 : Number of maps to generate}';
+                           {--maps=20 : Number of maps to generate}';
 
     protected $description = 'Install Laraconman package with migrations and sample data';
 
@@ -107,14 +107,23 @@ class InstallCommand extends Command
         }
         copy($manifestPath, $manifestDest);
 
-        // Copy images to application's public/vendor/laraconman/images directory
-        $srcImgDir = base_path('packages/laraconman/resources/assets/images');
-        $destImgDir = public_path('vendor/laraconman/images');
-        @mkdir($destImgDir, 0777, true);
-        foreach (glob($srcImgDir . '/*.{svg,png}', GLOB_BRACE) as $imgFile) {
-            $destFile = $destImgDir . '/' . basename($imgFile);
-            copy($imgFile, $destFile);
-        }
+	    // Copy images to application's public/vendor/laraconman/images directory
+	    $srcImgDir = __DIR__.'/../../resources/assets/images';
+	    $destImgDir = public_path('vendor/laraconman/images');
+	    @mkdir($destImgDir, 0777, true);
+	    foreach (glob($srcImgDir . '/*.{svg,png}', GLOB_BRACE) as $imgFile) {
+		    $destFile = $destImgDir . '/' . basename($imgFile);
+		    copy($imgFile, $destFile);
+	    }
+
+	    // Copy images to application's public/vendor/laraconman/images directory
+	    $srcDir = __DIR__.'/../../resources/assets/audio';
+	    $destDir = public_path('vendor/laraconman/audio');
+	    @mkdir($destDir, 0777, true);
+	    foreach (glob($srcDir . '/*.mp3') as $imgFile) {
+		    $destFile = $destDir . '/' . basename($imgFile);
+		    copy($imgFile, $destFile);
+	    }
 
         $this->info('✅ Assets published');
     }
